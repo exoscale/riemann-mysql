@@ -1,4 +1,5 @@
 *.o
+riemann-mysql
 riemann.pb-c.c
 riemann.pb-c.h
 *~
