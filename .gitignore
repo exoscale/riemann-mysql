@@ -1,0 +1,6 @@
+*.o
+riemann.pb-c.c
+riemann.pb-c.h
+*~
+*.deb
+*core
