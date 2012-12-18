@@ -19,7 +19,9 @@ package:
 	mkdir -p /tmp/fpm-pkg/usr/bin
 	mkdir -p /tmp/fpm-pkg/etc/init
 	make install DESTDIR=/tmp/fpm-pkg
-	fpm -s dir -t $(FPMTYPE) -C /tmp/fpm-pkg -n $(PROG) -v $(VERSION) .
+	fpm -s dir -t $(FPMTYPE) -C /tmp/fpm-pkg \
+            -d libprotobuf-c0 -d libmysqlclient  \
+	    -n $(PROG) -v $(VERSION) .
 	rm -r /tmp/fpm-pkg
 
 install: all
