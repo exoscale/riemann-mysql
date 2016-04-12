@@ -1,6 +1,0 @@
-# riemann-mysql
-description "mysql replication health check"
-start on runlevel [235]
-stop on runlevel [016]
-respawn
-exec riemann-mysql
