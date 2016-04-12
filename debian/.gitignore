@@ -1,0 +1,6 @@
+/debhelper-build-stamp
+/*.debhelper
+/*.debhelper.log
+/*.substvars
+/files
+/rpp-c/
