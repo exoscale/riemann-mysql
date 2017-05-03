@@ -1,0 +1,11 @@
+[Unit]
+Description=riemann-mysql
+ConditionPathExists=/etc/riemann-mysql.conf
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/riemann-mysql
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
