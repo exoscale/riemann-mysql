@@ -7,7 +7,7 @@ Build-Depends: debhelper (>= 9),
                git,
                libriemann-client-dev,
                libmysqlclient-dev,
-               lsb-release
+               lsb-release,
                dh-systemd
 Standards-Version: 3.9.7
 
