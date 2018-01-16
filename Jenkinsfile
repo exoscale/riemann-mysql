@@ -10,7 +10,7 @@ node {
         checkout scm
       }
       stage('build') {
-        gitBuildPackage('xenial')
+        gitPbuilder('xenial')
       }
     }
     stage('upload') {
@@ -19,12 +19,12 @@ node {
   }
   catch (err) {
     currentBuild.result = 'FAILURE'
-    ircNotification()
+    //ircNotification()
     throw err
   }
   finally {
     if (currentBuild.result != 'FAILURE') {
-      ircNotification()
+      //ircNotification()
     }
   }
 }
