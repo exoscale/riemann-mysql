@@ -225,7 +225,7 @@ mysql_gather(struct mysql_handler *hdl)
     ev = riemann_event_create(RIEMANN_EVENT_FIELD_HOST,
                               hostname,
                               RIEMANN_EVENT_FIELD_SERVICE,
-                              "mysql",
+                              "mysql/replication",
                               RIEMANN_EVENT_FIELD_TIME,
                               (int64_t)time(NULL),
                               RIEMANN_EVENT_FIELD_STATE,
