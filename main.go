@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log/syslog"
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -17,18 +19,19 @@ import (
 )
 
 var (
-	mysqlHost     string   = "localhost"        // TODO
-	mysqlPort     string   = "3306"             // TODO
-	mysqlUser     string   = "root"             // TODO
-	mysqlPassword string   = "root"             // TODO
-	mysqlDatabase string   = "mysql"            // TODO
-	riemannHost   string   = "localhost"        // TODO
-	riemannPort   string   = "5555"             // TODO
-	riemannTTL    float32  = 60                 // TODO
-	riemannTags   []string = []string{"a", "b"} // TODO
+	mysqlHost     string = "localhost"
+	mysqlPort     string = "3306"
+	mysqlUser     string = "root"
+	mysqlPassword string = "root"
+	mysqlDatabase string = ""
+	riemannHost   string = "localhost"
+	riemannPort   string = "5555"
+	riemannTTL    float32
+	riemannTags   []string
 
-	interval   time.Duration = time.Second * 10 // TODO
-	delay      float64       = 2.0              // TODO
+	hostname   string
+	interval   time.Duration = time.Second * 30
+	delay      float64       = 2.0
 	log        log15.Logger
 	configFile string
 	debug      bool
@@ -55,6 +58,96 @@ func init() {
 		h = log15.LvlFilterHandler(log15.LvlError, h)
 	}
 	log.SetHandler(h)
+
+	if configFile != "" {
+		log.Debug("loading configuratin file", "path", configFile)
+		if err := loadConfig(configFile); err != nil {
+			dieOnError(fmt.Sprintf("unable to load configuration: %s", err))
+		}
+	}
+
+	riemannTTL = float32(interval + time.Duration(delay))
+}
+
+func loadConfig(path string) error {
+	var (
+		k, v string
+	)
+
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(line) == 0 || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+
+		items := strings.Split(line, "=")
+		if len(items) != 2 {
+			return fmt.Errorf("malformated line %q", line)
+		}
+
+		k, v = strings.TrimSpace(items[0]), strings.TrimSpace(items[1])
+		log.Debug("parsed configuration line",
+			"key", k,
+			"value", v)
+
+		switch k {
+		case "mysql_host":
+			mysqlHost = v
+
+		case "mysql_port":
+			mysqlPort = v
+
+		case "mysql_user":
+			mysqlUser = v
+
+		case "mysql_password":
+			mysqlPassword = v
+
+		case "mysql_database":
+			mysqlDatabase = v
+
+		case "riemann_host":
+			riemannHost = v
+
+		case "riemann_port":
+			riemannPort = v
+
+		case "interval":
+			i, err := strconv.ParseInt(v, 10, 32)
+			if err != nil {
+				return fmt.Errorf("invalid value %q for setting `interval`", v)
+			}
+			interval = time.Duration(i) * time.Second
+
+		case "delay":
+			d, err := strconv.ParseFloat(v, 32)
+			if err != nil {
+				return fmt.Errorf("invalid value %q for setting `delay`", v)
+			}
+			delay = d
+
+		case "hostname":
+			hostname = v
+
+		case "tags":
+			riemannTags = strings.Split(v, " ")
+
+		default:
+			log.Warn(fmt.Sprintf("unsupported configuration setting %q", k))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func main() {
@@ -113,8 +206,11 @@ func main() {
 					Time:    t.Unix(),
 					Service: fmt.Sprintf("mysql/replication/conn%d", i),
 					State:   "ok",
-					Tags:    riemannTags,
 					Ttl:     float32(interval.Seconds() + delay),
+					Tags:    riemannTags,
+				}
+				if hostname != "" {
+					event.Host = hostname
 				}
 
 				if connName, _ := r.Resultset.GetStringByName(i, "Connection_name"); connName != "" {
