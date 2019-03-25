@@ -8,14 +8,7 @@ Watch mysql replication status and notify riemann of the output.
 
 build dependencies (ubuntu names):
 
-* libmysclientclient-dev
-* protobuf-c-compiler
-* libprotobuf-c0-dev
-
-run dependencies (ubuntu names):
-
-* libmysqlclient
-* libprotobuf-c0
+* Go compiler (>= 1.11)
 
 ### Building
 
