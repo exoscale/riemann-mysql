@@ -19,22 +19,22 @@ import (
 )
 
 var (
-	mysqlHost     string = "localhost"
-	mysqlPort     string = "3306"
-	mysqlUser     string = "root"
-	mysqlPassword string = "root"
-	mysqlDatabase string = ""
-	riemannHost   string = "localhost"
-	riemannPort   string = "5555"
+	mysqlHost     = "localhost"
+	mysqlPort     = "3306"
+	mysqlUser     = "root"
+	mysqlPassword = "root"
+	mysqlDatabase = ""
+	riemannHost   = "localhost"
+	riemannPort   = "5555"
 	riemannTTL    float32
 	riemannTags   []string
+	hostname      string
+	interval      = time.Second * 30
+	delay         = 2.0
 
-	hostname   string
-	interval   time.Duration = time.Second * 30
-	delay      float64       = 2.0
-	log        log15.Logger
 	configFile string
 	debug      bool
+	log        log15.Logger
 )
 
 func init() {
