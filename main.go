@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"log/syslog"
@@ -16,6 +17,7 @@ import (
 	"github.com/amir/raidman"
 	mysql "github.com/siddontang/go-mysql/client"
 	"gopkg.in/inconshreveable/log15.v2"
+	"gopkg.in/tomb.v2"
 )
 
 var (
@@ -43,8 +45,8 @@ func init() {
 		err error
 	)
 
-	flag.BoolVar(&debug, "d", false, "run in debug mode")
 	flag.StringVar(&configFile, "f", "/etc/riemann-mysql.conf", "path to configuration file")
+	flag.BoolVar(&debug, "d", false, "run in debug mode")
 	flag.Parse()
 
 	log = log15.New()
@@ -71,9 +73,7 @@ func init() {
 }
 
 func loadConfig(path string) error {
-	var (
-		k, v string
-	)
+	var k, v string
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -155,128 +155,129 @@ func main() {
 	var (
 		riemann *raidman.Client
 		db      *mysql.Conn
+		t       *tomb.Tomb
 		err     error
 	)
 
 	// Handle termination signals
+	t, _ = tomb.WithContext(context.TODO())
 	sig := make(chan os.Signal, 1)
-	stop := make(chan bool, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-
 	go func() {
 		<-sig // Block until we receive a notification on the chan from signal handler
-		log.Info("terminating")
-		stop <- true
+		log.Debug("received termination signal")
+		t.Kill(nil)
 	}()
 
 	if riemann, err = raidman.Dial("tcp4", net.JoinHostPort(riemannHost, riemannPort)); err != nil {
 		dieOnError(fmt.Sprintf("unable to connect to riemann server: %s", err))
 	}
 
-	go func() {
-		log.Info("starting")
+	log.Info("starting")
 
+	t.Go(func() error {
 		for {
-			log.Debug("getting database handle")
-			if db, err = getDbHandle(db); err != nil {
-				log.Warn("unable to get database handle", "error", err)
-				time.Sleep(interval)
-				continue
-			}
-
-			events := make([]*raidman.Event, 0)
-			t := time.Now()
-
-			log.Debug("gathering statistics")
-			r, err := db.Execute("SHOW ALL SLAVES STATUS")
-			if err != nil {
-				log.Warn("unable to query replication status", "error", err)
-				events = append(events, &raidman.Event{
-					Time:        t.Unix(),
-					Service:     "mysql/replication",
-					State:       "unknown",
-					Description: fmt.Sprintf("unable to query replication status: %s", err),
-					Tags:        riemannTags,
-					Ttl:         float32(interval.Seconds() + delay),
-				})
-				goto send
-			}
-
-			for i := 0; i < r.Resultset.RowNumber(); i++ {
-				event := &raidman.Event{
-					Time:    t.Unix(),
-					Service: fmt.Sprintf("mysql/replication/conn%d", i),
-					State:   "ok",
-					Ttl:     float32(interval.Seconds() + delay),
-					Tags:    riemannTags,
-				}
-				if hostname != "" {
-					event.Host = hostname
-				}
-
-				if connName, _ := r.Resultset.GetStringByName(i, "Connection_name"); connName != "" {
-					event.Service = fmt.Sprintf("mysql/replication/%s", connName)
-				}
-
-				sqlSlaveRunning, err := r.Resultset.GetStringByName(i, "Slave_SQL_Running")
-				if err != nil {
-					event.State = "unknown"
-					event.Description = fmt.Sprintf("unable to retrieve SQL slave state: %s", err)
-					events = append(events, event)
-					log.Warn(event.Description)
-					continue
-				} else if threadState(sqlSlaveRunning) != "running" {
-					event.State = "warning"
-				}
-
-				ioSlaveRunning, err := r.Resultset.GetStringByName(i, "Slave_IO_Running")
-				if err != nil {
-					event.State = "unknown"
-					event.Description = fmt.Sprintf("unable to retrieve IO thread state: %s", err)
-					events = append(events, event)
-					log.Warn(event.Description)
-					continue
-				} else if threadState(ioSlaveRunning) != "running" {
-					event.State = "critical"
-				}
-
-				secondsBehind, err := r.Resultset.GetIntByName(i, "Seconds_Behind_Master")
-				if err != nil {
-					event.State = "unknown"
-					event.Description = fmt.Sprintf("unable to retrieve replication lag value: %s", err)
-					events = append(events, event)
-					log.Warn(event.Description)
+			select {
+			case _ = <-time.NewTicker(interval).C:
+				log.Debug("getting database handle")
+				if db, err = getDbHandle(db); err != nil {
+					log.Warn("unable to get database handle", "error", err)
+					time.Sleep(interval)
 					continue
 				}
 
-				log.Debug("gathered",
-					"connection", strings.Split(event.Service, "/")[2],
-					"sql_thread", threadState(sqlSlaveRunning),
-					"io_thread", threadState(ioSlaveRunning),
-					"seconds_behind", secondsBehind)
+				events := make([]*raidman.Event, 0)
+				t := time.Now()
 
-				event.Description = fmt.Sprintf("slave io: %s, slave sql: %s",
-					threadState(ioSlaveRunning),
-					threadState(sqlSlaveRunning))
-				event.Metric = secondsBehind
-				events = append(events, event)
-			}
+				log.Debug("gathering statistics")
+				r, err := db.Execute("SHOW ALL SLAVES STATUS")
+				if err != nil {
+					log.Warn("unable to query replication status", "error", err)
+					events = append(events, &raidman.Event{
+						Time:        t.Unix(),
+						Service:     "mysql/replication",
+						State:       "unknown",
+						Description: fmt.Sprintf("unable to query replication status: %s", err),
+						Tags:        riemannTags,
+						Ttl:         float32(interval.Seconds() + delay),
+					})
+					goto send
+				}
 
-		send:
-			log.Debug("sending Riemann events")
-			if err := riemann.SendMulti(events); err != nil {
-				log.Error("unable to send Riemann events", "error", err)
-			}
+				for i := 0; i < r.Resultset.RowNumber(); i++ {
+					event := &raidman.Event{
+						Time:    t.Unix(),
+						Service: fmt.Sprintf("mysql/replication/conn%d", i),
+						State:   "ok",
+						Ttl:     float32(interval.Seconds() + delay),
+						Tags:    riemannTags,
+					}
+					if hostname != "" {
+						event.Host = hostname
+					}
 
-			waitFor := interval - time.Now().Sub(t)
-			log.Debug("wait interval", "duration", waitFor)
-			if waitFor > 0 {
-				time.Sleep(waitFor)
+					if connName, _ := r.Resultset.GetStringByName(i, "Connection_name"); connName != "" {
+						event.Service = fmt.Sprintf("mysql/replication/%s", connName)
+					}
+
+					sqlSlaveRunning, err := r.Resultset.GetStringByName(i, "Slave_SQL_Running")
+					if err != nil {
+						event.State = "unknown"
+						event.Description = fmt.Sprintf("unable to retrieve SQL slave state: %s", err)
+						events = append(events, event)
+						log.Warn(event.Description)
+						continue
+					} else if threadState(sqlSlaveRunning) != "running" {
+						event.State = "warning"
+					}
+
+					ioSlaveRunning, err := r.Resultset.GetStringByName(i, "Slave_IO_Running")
+					if err != nil {
+						event.State = "unknown"
+						event.Description = fmt.Sprintf("unable to retrieve IO thread state: %s", err)
+						events = append(events, event)
+						log.Warn(event.Description)
+						continue
+					} else if threadState(ioSlaveRunning) != "running" {
+						event.State = "critical"
+					}
+
+					secondsBehind, err := r.Resultset.GetIntByName(i, "Seconds_Behind_Master")
+					if err != nil {
+						event.State = "unknown"
+						event.Description = fmt.Sprintf("unable to retrieve replication lag value: %s", err)
+						events = append(events, event)
+						log.Warn(event.Description)
+						continue
+					}
+
+					log.Debug("gathered",
+						"connection", strings.Split(event.Service, "/")[2],
+						"sql_thread", threadState(sqlSlaveRunning),
+						"io_thread", threadState(ioSlaveRunning),
+						"seconds_behind", secondsBehind)
+
+					event.Description = fmt.Sprintf("slave io: %s, slave sql: %s",
+						threadState(ioSlaveRunning),
+						threadState(sqlSlaveRunning))
+					event.Metric = secondsBehind
+					events = append(events, event)
+				}
+
+			send:
+				log.Debug("sending Riemann events")
+				if err := riemann.SendMulti(events); err != nil {
+					log.Error("unable to send Riemann events", "error", err)
+				}
+
+			case <-t.Dying():
+				return nil
 			}
 		}
-	}()
+	})
 
-	<-stop
+	t.Wait()
+	log.Info("terminating")
 
 	if db != nil {
 		db.Close()
