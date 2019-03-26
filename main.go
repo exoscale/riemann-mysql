@@ -176,9 +176,10 @@ func main() {
 	log.Info("starting")
 
 	t.Go(func() error {
+		tick := time.NewTicker(interval)
 		for {
 			select {
-			case _ = <-time.NewTicker(interval).C:
+			case _ = <-tick.C:
 				log.Debug("getting database handle")
 				if db, err = getDbHandle(db); err != nil {
 					log.Warn("unable to get database handle", "error", err)
