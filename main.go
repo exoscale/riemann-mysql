@@ -44,18 +44,19 @@ func init() {
 	)
 
 	flag.BoolVar(&debug, "d", false, "run in debug mode")
-	flag.StringVar(&configFile, "f", "", "path to configuration file")
+	flag.StringVar(&configFile, "f", "/etc/riemann-mysql.conf", "path to configuration file")
 	flag.Parse()
 
 	log = log15.New()
 	if debug {
 		h = log15.LvlFilterHandler(log15.LvlDebug, log15.StderrHandler)
 	} else {
-		if h, err = log15.SyslogHandler(syslog.LOG_WARNING, "riemann-mysql", log15.LogfmtFormat()); err != nil {
+		if h, err = log15.SyslogHandler(syslog.LOG_INFO|syslog.LOG_LOCAL0, "riemann-mysql",
+			log15.LogfmtFormat()); err != nil {
 			fmt.Fprintf(os.Stderr, "error: unable to initialize syslog logging: %s", err)
 			os.Exit(1)
 		}
-		h = log15.LvlFilterHandler(log15.LvlError, h)
+		h = log15.LvlFilterHandler(log15.LvlInfo, h)
 	}
 	log.SetHandler(h)
 
@@ -277,7 +278,9 @@ func main() {
 
 	<-stop
 
-	db.Close()
+	if db != nil {
+		db.Close()
+	}
 	riemann.Close()
 }
 
