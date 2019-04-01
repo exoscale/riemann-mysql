@@ -1,6 +1,6 @@
 module github.com/exoscale/riemann-mysql
 
-go 1.12
+go 1.11
 
 require (
 	github.com/amir/raidman v0.0.0-20170415203553-1ccc43bfb9c9
