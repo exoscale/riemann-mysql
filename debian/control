@@ -2,11 +2,10 @@ Source: riemann-mysql
 Section: net
 Priority: optional
 Homepage: http://github.com/exoscale/riemann-mysql
-Maintainer: Pierre-Yves Ritschard <pyr@spootnik.org>
+Maintainer: Marc Falzon <marc@exoscale.com>
 Build-Depends: debhelper (>= 9),
                git,
-               libriemann-client-dev,
-               libmysqlclient-dev,
+               golang (>= 2:1.11~),
                lsb-release,
                dh-systemd
 Standards-Version: 3.9.7
@@ -14,4 +13,4 @@ Standards-Version: 3.9.7
 Package: riemann-mysql
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}
-Description: Watch mysql replication status and notify riemann of the output.
+Description: Watch MySQL replication status and notify Riemann of the output.
