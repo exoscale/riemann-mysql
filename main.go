@@ -169,10 +169,6 @@ func main() {
 		t.Kill(nil)
 	}()
 
-	if riemann, err = raidman.Dial("tcp4", net.JoinHostPort(riemannHost, riemannPort)); err != nil {
-		dieOnError(fmt.Sprintf("unable to connect to riemann server: %s", err))
-	}
-
 	log.Info("starting")
 
 	t.Go(func() error {
@@ -180,6 +176,13 @@ func main() {
 		for {
 			select {
 			case _ = <-tick.C:
+				log.Debug("getting Riemann server handle")
+				if riemann, err = getRiemannHandle(riemann); err != nil {
+					log.Warn("unable to get Riemann server handle", "error", err)
+					time.Sleep(interval)
+					continue
+				}
+
 				log.Debug("getting database handle")
 				if db, err = getDbHandle(db); err != nil {
 					log.Warn("unable to get database handle", "error", err)
@@ -283,7 +286,9 @@ func main() {
 	if db != nil {
 		db.Close()
 	}
-	riemann.Close()
+	if riemann != nil {
+		riemann.Close()
+	}
 }
 
 func dieOnError(msg string) {
@@ -301,6 +306,18 @@ func getDbHandle(db *mysql.Conn) (*mysql.Conn, error) {
 	}
 
 	return mysql.Connect(net.JoinHostPort(mysqlHost, mysqlPort), mysqlUser, mysqlPassword, mysqlDatabase)
+}
+
+func getRiemannHandle(riemann *raidman.Client) (*raidman.Client, error) {
+	if riemann != nil {
+		if _, err := riemann.Query(`service =~ "riemann %"`); err != nil {
+			return nil, err
+		}
+
+		return riemann, nil
+	}
+
+	return raidman.Dial("tcp4", net.JoinHostPort(riemannHost, riemannPort))
 }
 
 func threadState(s string) string {
