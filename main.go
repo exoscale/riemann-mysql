@@ -213,12 +213,12 @@ func main() {
 				// Empty set (0.000 sec)
 				// we assume is a master
 				if r.Resultset.RowNumber() == 0 {
-					log.Info("There is no replication status, looks like master")
+					log.Debug("no replication status, looks like master")
 					events = append(events, &raidman.Event{
 						Time:        t.Unix(),
 						Service:     "mysql/replication/master",
 						State:       "ok",
-						Description: "Looks like this is the master",
+						Description: "master OK",
 						Tags:        riemannTags,
 						Ttl:         float32(interval.Seconds() + delay),
 					})
