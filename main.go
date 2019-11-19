@@ -208,6 +208,23 @@ func main() {
 					goto send
 				}
 
+				// If
+				// MariaDB [(none)]> show all slaves status;
+				// Empty set (0.000 sec)
+				// we assume is a master
+				if r.Resultset.RowNumber() == 0 {
+					log.Debug("no replication status, looks like master")
+					events = append(events, &raidman.Event{
+						Time:        t.Unix(),
+						Service:     "mysql/replication/master",
+						State:       "ok",
+						Description: "master OK",
+						Tags:        riemannTags,
+						Ttl:         float32(interval.Seconds() + delay),
+					})
+					goto send
+				}
+
 				for i := 0; i < r.Resultset.RowNumber(); i++ {
 					event := &raidman.Event{
 						Time:    t.Unix(),
